@@ -1,1 +1,168 @@
+--Made by Draze---
+
+local DataStoreService = game:GetService("DataStoreService")
+local PlayerDataStore = DataStoreService:GetDataStore("PlayerDataStore")
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+
+local function createLeaderstats(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if not leaderstats then
+		leaderstats = Instance.new("Folder")
+		leaderstats.Name = "leaderstats"
+		leaderstats.Parent = player
+	end
+
+	if not leaderstats:FindFirstChild("Coins") then
+		local Coins = Instance.new("IntValue")
+		Coins.Name = "Coins"
+		Coins.Value = 0
+		Coins.Parent = leaderstats
+	end
+
+	if not leaderstats:FindFirstChild("Wins") then
+		local Wins = Instance.new("IntValue")
+		Wins.Name = "Wins"
+		Wins.Value = 0
+		Wins.Parent = leaderstats
+	end
+end
+
+local function loadCoins(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats and leaderstats:FindFirstChild("Coins") then
+		local success, data = pcall(function()
+			return PlayerDataStore:GetAsync(player.UserId .. "_Coins")
+		end)
+
+		if success and data then
+			leaderstats.Coins.Value = data
+		else
+			leaderstats.Coins.Value = 0
+		end
+	end
+end
+
+local function loadWins(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats and leaderstats:FindFirstChild("Wins") then
+		local success, data = pcall(function()
+			return PlayerDataStore:GetAsync(player.UserId .. "_Wins")
+		end)
+
+		if success and data then
+			leaderstats.Wins.Value = data
+		else
+			leaderstats.Wins.Value = 0
+		end
+	end
+end
+
+
+local function saveCoins(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats and leaderstats:FindFirstChild("Coins") then
+		local success, errorMessage = pcall(function()
+			PlayerDataStore:SetAsync(player.UserId .. "_Coins", leaderstats.Coins.Value)
+		end)
+		if not success then
+			warn("Failed to save coins data for " .. player.Name .. ": " .. errorMessage)
+		end
+	end
+end
+
+local function saveWins(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats and leaderstats:FindFirstChild("Wins") then
+		local success, errorMessage = pcall(function()
+			PlayerDataStore:SetAsync(player.UserId .. "_Wins", leaderstats.Wins.Value)
+		end)
+		if not success then
+			warn("Failed to save wins data for " .. player.Name .. ": " .. errorMessage)
+		end
+	end
+end
+
+local function saveEggs(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats and leaderstats:FindFirstChild("Eggs") then
+		local success, errorMessage = pcall(function()
+			PlayerDataStore:SetAsync(player.UserId .. "_Eggs", leaderstats.Eggs.Value)
+		end)
+		if not success then
+			warn("Failed to save eggs data for " .. player.Name .. ": " .. errorMessage)
+		end
+	end
+end
+
+local productFunctions = {
+	[3225161842] = function(player)
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local coins = leaderstats:FindFirstChild("Coins")
+			if coins then
+				coins.Value = coins.Value + 500
+				print(player.Name .. " purchased 500 Coins!")
+			end
+		end
+	end,
+	[3225161843] = function(player)
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local coins = leaderstats:FindFirstChild("Coins")
+			if coins then
+				coins.Value = coins.Value + 1000
+				print(player.Name .. " purchased 1,000 Coins!")
+			end
+		end
+	end,
+	[3225161839] = function(player)
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local coins = leaderstats:FindFirstChild("Coins")
+			if coins then
+				coins.Value = coins.Value + 5000
+				print(player.Name .. " purchased 5,000 Coins!")
+			end
+		end
+	end,
+	[3225161838] = function(player)
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local coins = leaderstats:FindFirstChild("Coins")
+			if coins then
+				coins.Value = coins.Value + 10000
+				print(player.Name .. " purchased 10,000 Coins!")
+			end
+		end
+	end,
+}
+
+MarketplaceService.ProcessReceipt = function(receiptInfo)
+	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
+	if not player then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	local handler = productFunctions[receiptInfo.ProductId]
+	if handler then
+		handler(player)
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
+
+Players.PlayerAdded:Connect(function(player)
+	player:WaitForChild("leaderstats")
+	createLeaderstats(player)
+	loadCoins(player)
+	loadWins(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	saveCoins(player)
+	saveWins(player)
+	saveEggs(player) 
+end)
 
