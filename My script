@@ -1,168 +1,186 @@
---Made by Draze---
+--//Made by Draze---
 
-local DataStoreService = game:GetService("DataStoreService")
-local PlayerDataStore = DataStoreService:GetDataStore("PlayerDataStore")
-local MarketplaceService = game:GetService("MarketplaceService")
+--// services
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
 
-local function createLeaderstats(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if not leaderstats then
-		leaderstats = Instance.new("Folder")
-		leaderstats.Name = "leaderstats"
-		leaderstats.Parent = player
-	end
+--// remote setup
+local attackEvent = ReplicatedStorage:FindFirstChild("AttackEvent")
 
-	if not leaderstats:FindFirstChild("Coins") then
-		local Coins = Instance.new("IntValue")
-		Coins.Name = "Coins"
-		Coins.Value = 0
-		Coins.Parent = leaderstats
-	end
-
-	if not leaderstats:FindFirstChild("Wins") then
-		local Wins = Instance.new("IntValue")
-		Wins.Name = "Wins"
-		Wins.Value = 0
-		Wins.Parent = leaderstats
-	end
+if not attackEvent then
+	attackEvent = Instance.new("RemoteEvent")
+	attackEvent.Name = "AttackEvent"
+	attackEvent.Parent = ReplicatedStorage
 end
 
-local function loadCoins(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats and leaderstats:FindFirstChild("Coins") then
-		local success, data = pcall(function()
-			return PlayerDataStore:GetAsync(player.UserId .. "_Coins")
-		end)
+--// settings
+local DAMAGE = 25
+local COOLDOWN = 1.5
+local RANGE = 8
+local HITBOX_SIZE = Vector3.new(4,4,8)
 
-		if success and data then
-			leaderstats.Coins.Value = data
-		else
-			leaderstats.Coins.Value = 0
-		end
+--// tables
+local cooldowns = {}
+local lastAttackTime = {}
+
+--// helper: check cooldown
+local function canAttack(player)
+	if not cooldowns[player] then
+		return true
 	end
+	return false
 end
 
-local function loadWins(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats and leaderstats:FindFirstChild("Wins") then
-		local success, data = pcall(function()
-			return PlayerDataStore:GetAsync(player.UserId .. "_Wins")
-		end)
-
-		if success and data then
-			leaderstats.Wins.Value = data
-		else
-			leaderstats.Wins.Value = 0
-		end
-	end
+--// helper: set cooldown
+local function setCooldown(player)
+	cooldowns[player] = true
+	
+	task.delay(COOLDOWN, function()
+		cooldowns[player] = nil
+	end)
 end
 
-
-local function saveCoins(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats and leaderstats:FindFirstChild("Coins") then
-		local success, errorMessage = pcall(function()
-			PlayerDataStore:SetAsync(player.UserId .. "_Coins", leaderstats.Coins.Value)
-		end)
-		if not success then
-			warn("Failed to save coins data for " .. player.Name .. ": " .. errorMessage)
-		end
-	end
+--// helper: creaTe sound
+local function playSound(parent)
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://12222216"
+	sound.Volume = 1
+	sound.Parent = parent
+	
+	sound:Play()
+	Debris:AddItem(sound, 2)
 end
 
-local function saveWins(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats and leaderstats:FindFirstChild("Wins") then
-		local success, errorMessage = pcall(function()
-			PlayerDataStore:SetAsync(player.UserId .. "_Wins", leaderstats.Wins.Value)
-		end)
-		if not success then
-			warn("Failed to save wins data for " .. player.Name .. ": " .. errorMessage)
-		end
-	end
+--// helper: create hit effect
+local function createEffect(position)
+	local part = Instance.new("Part")
+	part.Size = Vector3.new(1,1,1)
+	part.Anchored = true
+	part.CanCollide = false
+	part.Position = position
+	part.BrickColor = BrickColor.new("Bright red")
+	part.Material = Enum.Material.Neon
+	part.Parent = workspace
+	
+	local tween = game:GetService("TweenService"):Create(
+		part,
+		TweenInfo.new(0.3),
+		{Size = Vector3.new(3,3,3), Transparency = 1}
+	)
+	
+	tween:Play()
+	
+	Debris:AddItem(part, 0.3)
 end
 
-local function saveEggs(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if leaderstats and leaderstats:FindFirstChild("Eggs") then
-		local success, errorMessage = pcall(function()
-			PlayerDataStore:SetAsync(player.UserId .. "_Eggs", leaderstats.Eggs.Value)
-		end)
-		if not success then
-			warn("Failed to save eggs data for " .. player.Name .. ": " .. errorMessage)
-		end
-	end
+--// helper: knockback
+local function applyKnockback(targetRoot, attackerRoot)
+	if not targetRoot or not attackerRoot then return end
+	
+	local direction = (targetRoot.Position - attackerRoot.Position).Unit
+	
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.Velocity = direction * 30 + Vector3.new(0,10,0)
+	bodyVelocity.MaxForce = Vector3.new(10000,10000,10000)
+	bodyVelocity.Parent = targetRoot
+	
+	Debris:AddItem(bodyVelocity, 0.2)
 end
 
-local productFunctions = {
-	[3225161842] = function(player)
-		local leaderstats = player:FindFirstChild("leaderstats")
-		if leaderstats then
-			local coins = leaderstats:FindFirstChild("Coins")
-			if coins then
-				coins.Value = coins.Value + 500
-				print(player.Name .. " purchased 500 Coins!")
+--// create hitBox
+local function createHitbox(character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	
+	local hitbox = Instance.new("Part")
+	hitbox.Size = HITBOX_SIZE
+	hitbox.Transparency = 1
+	hitbox.Anchored = true
+	hitbox.CanCollide = false
+	
+	hitbox.CFrame = root.CFrame * CFrame.new(0,0,-RANGE/2)
+	hitbox.Parent = workspace
+	
+	return hitbox
+end
+
+--// process hit
+local function processHit(player, hitbox)
+	local character = player.Character
+	if not character then return end
+	
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	
+	local hitList = {}
+	
+	local connection
+	connection = hitbox.Touched:Connect(function(hit)
+		local model = hit:FindFirstAncestorOfClass("Model")
+		
+		if model and model ~= character then
+			local hum = model:FindFirstChild("Humanoid")
+			local targetRoot = model:FindFirstChild("HumanoidRootPart")
+			
+			if hum and not hitList[hum] then
+				hitList[hum] = true
+				
+				-- damage
+				hum:TakeDamage(DAMAGE)
+				
+				-- effects
+				createEffect(targetRoot.Position)
+				playSound(targetRoot)
+				
+				-- knockback
+				applyKnockback(targetRoot, root)
 			end
 		end
-	end,
-	[3225161843] = function(player)
-		local leaderstats = player:FindFirstChild("leaderstats")
-		if leaderstats then
-			local coins = leaderstats:FindFirstChild("Coins")
-			if coins then
-				coins.Value = coins.Value + 1000
-				print(player.Name .. " purchased 1,000 Coins!")
-			end
+	end)
+	
+	task.delay(0.2, function()
+		if connection then
+			connection:Disconnect()
 		end
-	end,
-	[3225161839] = function(player)
-		local leaderstats = player:FindFirstChild("leaderstats")
-		if leaderstats then
-			local coins = leaderstats:FindFirstChild("Coins")
-			if coins then
-				coins.Value = coins.Value + 5000
-				print(player.Name .. " purchased 5,000 Coins!")
-			end
-		end
-	end,
-	[3225161838] = function(player)
-		local leaderstats = player:FindFirstChild("leaderstats")
-		if leaderstats then
-			local coins = leaderstats:FindFirstChild("Coins")
-			if coins then
-				coins.Value = coins.Value + 10000
-				print(player.Name .. " purchased 10,000 Coins!")
-			end
-		end
-	end,
-}
-
-MarketplaceService.ProcessReceipt = function(receiptInfo)
-	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
-	if not player then
-		return Enum.ProductPurchaseDecision.NotProcessedYet
-	end
-
-	local handler = productFunctions[receiptInfo.ProductId]
-	if handler then
-		handler(player)
-		return Enum.ProductPurchaseDecision.PurchaseGranted
-	end
-
-	return Enum.ProductPurchaseDecision.NotProcessedYet
+	end)
 end
 
-Players.PlayerAdded:Connect(function(player)
-	player:WaitForChild("leaderstats")
-	createLeaderstats(player)
-	loadCoins(player)
-	loadWins(player)
+--// main Attack
+local function attack(player)
+	if not canAttack(player) then return end
+	
+	local character = player.Character
+	if not character then return end
+	
+	local hum = character:FindFirstChild("Humanoid")
+	if not hum or hum.Health <= 0 then return end
+	
+	setCooldown(player)
+	
+	local hitbox = createHitbox(character)
+	if not hitbox then return end
+	
+	processHit(player, hitbox)
+	
+	Debris:AddItem(hitbox, 0.2)
+end
+
+--// event connection
+attackEvent.OnServerEvent:Connect(function(player)
+	attack(player)
 end)
 
+--// player cleanup
 Players.PlayerRemoving:Connect(function(player)
-	saveCoins(player)
-	saveWins(player)
-	saveEggs(player) 
+	cooldowns[player] = nil
+	lastAttackTime[player] = nil
 end)
 
+--// debg prints
+task.spawn(function()
+	while true do
+		task.wait(5)
+		print("Combat system running...")
+	end
+end)
